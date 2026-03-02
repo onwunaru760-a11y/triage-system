@@ -8,7 +8,6 @@ def generate_agent_questions(pain_description):
             "Any coughing up blood?"
         ]
     elif pain_description == "Squeezing":
-        a = "boy"
         return [
             "Any radiation to jaw or left arm?",
             "Any sweating or nausea?",
