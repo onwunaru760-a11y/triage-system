@@ -88,6 +88,7 @@ INVESTIGATIONS = {
 "refer_if": "None — manage here",
 },
 },
+
 "Sharp / Stabbing": {
 "Primary Health Centre (PHC)": {
 "available": [
