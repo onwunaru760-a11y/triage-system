@@ -70,8 +70,7 @@ INVESTIGATIONS = {
 "Echocardiogram — tertiary only",
 "Cardiac catheterisation — major tertiary centres only",
 ],
-"refer_if": "ESI 1-2, suspected STEMI on ECG, haemodynamic instability",
-"cardiogenic shock, severe LVF",
+"refer_if": "ESI 1-2, suspected STEMI on ECG, haemodynamic instability, cardiogenic shock, severe LVF",
 },
 "Tertiary / Teaching Hospital": {
 "available": [
@@ -272,4 +271,195 @@ INVESTIGATIONS = {
 },
 },
 }
+
+
+def get_investigations(pain_description, facility):
+    """Return the investigation object for a given pain type and facility."""
+    pain_data = INVESTIGATIONS.get(pain_description, INVESTIGATIONS["Dull / Aching"])
+    return pain_data.get(facility, pain_data.get("Primary Health Centre (PHC)", {}))
+
+# ■■ Worst-case differentials by pain type ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+# Ordered by: how dangerous is it if missed?
+DIFFERENTIALS = {
+"Squeezing / Pressure": [
+{"name": "STEMI / NSTEMI", "reason": "Must exclude first — time-critical"},
+{"name": "Unstable angina", "reason": "ACS spectrum — same workup as MI"},
+{"name": "Aortic dissection", "reason": "Squeezing + severe hypertension = red flag"},
+{"name": "Acute pulmonary oedema", "reason": "Cardiac failure can present as chest tightness"},
+{"name": "Sickle cell acute chest", "reason": "Nigeria-specific — always ask in young patients as its the most dangerous SCD complication"},
+{"name": "Peripartum cardiomyopathy", "reason": "Pregnant / postpartum women with cardiac symptoms"},
+{"name": "Hypertrophic cardiomyopathy", "reason": "Young Nigerian with squeezing pain + exertion"},
+],
+"Sharp / Stabbing": [
+{"name": "Pulmonary embolism", "reason": "Do not miss — high mortality if untreated"},
+{"name": "Tension pneumothorax", "reason": "Life-threatening — immediate needle decompression"},
+{"name": "Pericarditis", "reason": "Worse lying flat, better leaning forward"},
+{"name": "Pneumothorax", "reason": "Young thin males especially"},
+{"name": "Pulmonary tuberculosis", "reason": "High prevalence Nigeria — especially with haemoptysis"},
+{"name": "Pleuritis / Pleurisy", "reason": "Viral or bacterial — exclude PE first"},
+{"name": "Musculoskeletal", "reason": "Diagnosis of exclusion — only after cardiac causes excluded"},
+],
+"Tearing / Ripping": [
+{"name": "Aortic dissection (Type A)", "reason": "Surgical emergency — mortality 1-2% per hour untreated"},
+{"name": "Aortic dissection (Type B)", "reason": "Medical management — BP control essential"},
+{"name": "Oesophageal rupture", "reason": "Rare but highly lethal — after forceful vomiting"},
+{"name": "Traumatic aortic injury", "reason": "If any trauma history"},
+],
+"Burning": [
+{"name": "Acute MI (inferior)", "reason": "Always exclude — inferior MI mimics GI pain perfectly"},
+{"name": "GORD / Oesophagitis", "reason": "Most common cause of burning chest pain"},
+{"name": "Peptic ulcer disease", "reason": "H. pylori prevalence very high in Nigeria"},
+{"name": "Oesophageal spasm", "reason": "Can mimic ACS — responds to nitrates (misleading)"},
+{"name": "Hiatus hernia", "reason": "Positional symptoms, worse postprandially"},
+],
+"Dull / Aching": [
+{"name": "Silent MI (atypical ACS)", "reason": "Common in diabetics — dull ache only, no classic pain"},
+{"name": "Stable / Unstable angina", "reason": "Exertional dull ache — needs risk stratification"},
+{"name": "Pericarditis", "reason": "Can be dull rather than sharp"},
+{"name": "Musculoskeletal", "reason": "Diagnosis of exclusion"},
+{"name": "Anaemia-related", "reason": "Severe anaemia causes chest discomfort — check Hb"},
+],
+}
+
+def get_worst_differentials(pain_description, patient=None):
+    """
+    Return differentials for a given pain type.
+    Patient context allows adding Nigerian-specific differentials dynamically. So
+    the worst differentials in this case is patient-specific
+    """
+    diffs = DIFFERENTIALS.get(pain_description, DIFFERENTIALS["Dull / Aching"]).copy()
+    #copy creates a new list instance(preserving the master knowledge base)
+
+    #Now i want to add the patient specific details
+    if patient:
+        risk = patient.get("risk_factors", {})
+        age = patient.get("age", [])#this empty list default should be changed later
+        if risk.get("sickle_cell") and not any(d["name"] == "Sickle cell acute chest" for d in diffs):
+            diffs.insert(1, {
+                "name": "Sickle cell acute chest syndrome",
+                "reason": "Patient has SCD — this is the most dangerous SCD chest complication"
+            })
+        if risk.get("hiv"):
+            diffs.append({
+                "name": "HIV-related pericarditis / cardiomyopathy",
+                "reason": "HIV patients have elevated risk of pericarditis and dilated cardiomyopathy"
+            })
+        if age < 35 and pain_description.startswith("Squeezing"):
+            diffs.append({
+                "name": "Rheumatic heart disease",
+                "reason": "Young Nigerian + cardiac pain — RHD more prevalent than Western populations"
+            })
+        return diffs
+def get_monitoring_plan(esi_level, patient):
+    """Return a monitoring plan appropriate to the ESI level."""
+    spo2 = patient.get("spo2", 98)
+    bp = patient.get("systolic_bp", 120)
+    plans = {
+        1: [
+            "■ Continuous cardiac monitoring — immediately",
+            "■ Continuous pulse oximetry",
+            "■ BP every 5 minutes",
+            "■ Two large-bore IV cannulas — immediately",
+            "■ Oxygen — target SpO■ > 94%",
+            "■ Senior clinician to bedside — do not leave patient unattended",
+        ],
+        2: [
+            "Continuous cardiac monitoring",
+            "Pulse oximetry — continuous",
+            "BP and pulse every 15 minutes",
+            "IV access within 10 minutes",
+            "Reassess in 15 minutes",
+            "Escalate immediately if any deterioration",
+        ],
+        3: [
+            "BP and pulse every 30 minutes",
+            "Pulse oximetry every 30 minutes",
+            "Reassess within 30 minutes",
+            "Escalate if pain increases or vitals deteriorate",
+        ],
+        4: [
+            "Reassess within 1 hour",
+            "Vitals on arrival and on reassessment",
+            "Patient to alert staff if symptoms change",
+        ],
+        5: [
+            "Routine reassessment",
+            "Patient to alert staff if symptoms worsen",
+        ],
+    }
+
+    plan = plans.get(esi_level, plans[3]).copy()
+    if spo2 < 94:
+        plan.insert(0, f"SpO2 {spo2}% — oxygen supplementation REQUIRED now")
+    if bp < 90:
+        plan.insert(0, f"SBP {bp} mmHg — IV fluid resuscitation required")
+    if bp > 180:
+        plan.insert(0, f" SBP {bp} mmHg — urgent BP control needed")
+    return plan
+
+#come back to this fuction later and ascertain if it should still stay
+#if it's staying, edit the note context
+def get_nigerian_context_notes(patient):
+    """
+    Generate Nigerian-specific clinical context alerts.
+    This function encodes clinical insider knowledge that no
+    developer from outside Nigeria would think to include.
+    """
+    notes = []
+    risk = patient.get("risk_factors", {})
+    age = patient.get("age", "")
+    pain = patient.get("pain_description", "")
+
+    if risk.get("sickle_cell"):
+        notes.append({
+            "type": "warning",
+            "text":  "<b>Sickle Cell Disease:</b> Acute chest syndrome is the "
+    "most dangerous SCD pulmonary complication and a leading cause of "
+    "SCD death. Do not be reassured by young age. Give oxygen, IV hydration, "
+    "analgesia. Urgent haematology review. Exchange transfusion may be needed."
+
+        })
+
+    if age < 40 and pain.startswith("Squeezing"):
+        notes.append({
+            "type": "info",
+            "text": "■ <b>Young Nigerian patient + squeezing pain:</b> Consider rheumatic "
+                    "heart disease — Nigeria has significantly higher RHD prevalence than "
+                    "high-income countries. Mitral stenosis, AR, and RHD-related cardiac "
+                    "failure can all present with chest tightness in young adults."
+        })
+    if risk.get("hiv"):
+        notes.append({
+            "type": "info",
+            "text": "<b>HIV / ARV therapy:</b> HIV-positive patients and those on ARVs "
+                    "have elevated rates of pericarditis, myocarditis, pulmonary hypertension, "
+                    "and accelerated atherosclerosis. ACS can occur at younger ages. "
+                    "Some ARVs (particularly older NRTIs) are cardiotoxic"})
+
+    if patient.get("systolic_bp", 120) > 180:
+        notes.append({
+            "type": "warning",
+            "text": "<b>Severely elevated BP (> 180 mmHg):</b> In Nigeria, hypertension "
+                    "is a major epidemic — 45% adult prevalence. Hypertensive emergency with "
+                    "chest pain requires urgent BP reduction. Do not lower BP too fast "
+                    "(risk of ischaemia). Target: reduce MAP by 20-25% in first hour."
+        })
+
+    if pain.startswith("Squeezing") and patient.get("duration") == "> 12 hours":
+        notes.append({
+            "type": "warning",
+            "text": "■■ <b>Delayed presentation:</b> Patients in Nigeria often present "
+                    "late due to transport, cost, or traditional medicine use. A 'late' "
+                    "STEMI (> 12 hours) may still benefit from reperfusion — assess clinically. "
+                    "Do not withhold aspirin or anticoagulation based on duration alone."
+
+        })
+
+    if not notes:
+        notes.append({
+            "type": "info",
+            "text": "■■ No specific Nigerian-context alerts triggered for this presentation. "
+                    "Apply standard chest pain assessment pathway."
+        })
+    return notes
 
